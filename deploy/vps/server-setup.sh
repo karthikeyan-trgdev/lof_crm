@@ -127,8 +127,10 @@ if [ -n "${ADMIN_EMAIL:-}" ]; then
     echo "  already exists – left unchanged (reset passwords from the CRM)"
   else
     if [ -z "${ADMIN_PASSWORD:-}" ]; then read -rsp "  Password (10+ characters, letters and numbers; changed at first sign-in): " ADMIN_PASSWORD; echo; fi
-    tmp=$(sudo -u "$APP_USER" mktemp)
+    # Created by root, then handed over: Ubuntu's protected_regular stops root writing into another user's file in /tmp
+    tmp=$(mktemp)
     (cd "$APP_DIR" && sudo -u "$APP_USER" -H env ADMIN_PASSWORD="$ADMIN_PASSWORD" node scripts/create-admin.mjs --email "$ADMIN_EMAIL" --name "${ADMIN_NAME:-System Administrator}" --must-change) > "$tmp"
+    chown "$APP_USER" "$tmp"
     as_app pm2 stop lof-crm >/dev/null
     as_app bash -c "cd $APP_DIR && npx wrangler d1 execute lof_crm --local --persist-to $STATE_DIR --file $tmp" >/dev/null
     as_app pm2 start lof-crm >/dev/null
