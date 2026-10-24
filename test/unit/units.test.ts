@@ -3,6 +3,7 @@ import { hmacSha256Hex, signJwt, verifyJwt, hashPassword, verifyPassword, safeEq
 import { calcFee, feeFor, templateParams, msgFrom } from '../../src/domain/core';
 import { buildSched, instStatus, refundCalc, termProblem, lmsEnrolPayload, lmsMissing, targetsProblem, refundProblem } from '../../src/domain/terms';
 import { parseStatus } from '../../src/integrations/exotel';
+import { clientIp } from '../../src/lib/ratelimit';
 import { mapLead, parseLeadgenWebhook } from '../../src/integrations/meta';
 import { parseWebhook, waNumber, verifyHubSignature } from '../../src/integrations/whatsapp';
 import { redact, modeFor } from '../../src/integrations/base';
@@ -173,5 +174,16 @@ describe('integration plumbing', () => {
     expect(normPhone('+971 50-555 0107')).toBe('505550107');
     expect(indexFor('lead', { branch: 'KRM', status: 'Open', cslr: 'S01', phone: '+971 50 555 0107', email: 'A@B.com', enq: 'x' })).toMatchObject({ branch: 'KRM', ref1: '505550107', ref2: 'a@b.com', owner: 'S01' });
     expect(indexFor('task', { lead: 'L1', status: 'Pending', due: 'd' }, () => 'SPC').branch).toBe('SPC');
+  });
+});
+
+describe('clientIp', () => {
+  const req = (h: Record<string, string>) => new Request('http://x/', { headers: h });
+  it('uses the Cloudflare address when it is a real client', () => {
+    expect(clientIp(req({ 'cf-connecting-ip': '203.0.113.5', 'x-forwarded-for': '198.51.100.1' }))).toBe('203.0.113.5');
+  });
+  it('behind a local reverse proxy, uses the address the proxy appended', () => {
+    expect(clientIp(req({ 'cf-connecting-ip': '127.0.0.1', 'x-forwarded-for': '6.6.6.6, 203.0.113.9' }))).toBe('203.0.113.9');
+    expect(clientIp(req({ 'cf-connecting-ip': '::1' }))).toBe('::1');
   });
 });

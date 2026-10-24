@@ -50,6 +50,20 @@ public key: add it under the repo's *Settings → Deploy keys* (read-only), then
 
 The script is safe to run again. Existing data, secrets and logins are kept.
 
+### Servers with CyberPanel (OpenLiteSpeed)
+
+CyberPanel's OpenLiteSpeed already uses ports 80/443, so the script detects it (`/usr/local/lsws`) and does **not**
+install nginx or certbot. OpenLiteSpeed proxies to the CRM instead:
+
+1. CyberPanel → *Websites → Create Website* for the CRM domain, then *SSL → Manage SSL* to issue its certificate.
+2. *Websites → List Websites → Manage* → **vHost Conf**: add the `extprocessor lofcrm { … }` block, and
+   **Rewrite Rules**: paste the rules. Both are in [deploy/vps/openlitespeed-proxy.conf](deploy/vps/openlitespeed-proxy.conf)
+   and are printed by the setup script.
+3. Open `https://crm.yourdomain.com`. A 503 error means the CRM isn't running. Check with `sudo -u lofcrm pm2 status`.
+
+The CRM takes the visitor's address from the rightmost `X-Forwarded-For` entry when the request comes from the
+local proxy. Rate limits and the session log are then per visitor, not per proxy.
+
 ## 2. Connect GitHub (once)
 
 At the end, the setup script prints what to add under the repository's *Settings → Secrets and variables →

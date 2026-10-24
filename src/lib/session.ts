@@ -2,6 +2,7 @@
 // (unreadable by page scripts); API clients may send the same token as a Bearer header.
 import type { Env } from '../types';
 import { b64url, sha256Hex } from './crypto';
+import { clientIp } from './ratelimit';
 
 export type Stage = 'full' | 'password_change' | 'mfa_setup';
 const ABSOLUTE_HOURS = 12;
@@ -26,7 +27,7 @@ export async function createSession(env: Env, staffId: string, stage: Stage, req
   await env.DB.prepare(
     'INSERT INTO sessions (id_hash,staff_id,created_at,last_seen_at,expires_at,stage,acting_as,ip,user_agent) VALUES (?,?,?,?,?,?,?,?,?)',
   ).bind(await sha256Hex(token), staffId, now.toISOString(), now.toISOString(), new Date(now.getTime() + ABSOLUTE_HOURS * 3600e3).toISOString(), stage, actingAs ?? null,
-    req.headers.get('cf-connecting-ip') || null, (req.headers.get('user-agent') || '').slice(0, 200)).run();
+    clientIp(req) === 'unknown' ? null : clientIp(req), (req.headers.get('user-agent') || '').slice(0, 200)).run();
   return token;
 }
 

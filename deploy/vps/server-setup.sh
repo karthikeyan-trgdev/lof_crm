@@ -5,7 +5,8 @@
 #   sudo DOMAIN=crm.example.com LETSENCRYPT_EMAIL=you@example.com ADMIN_EMAIL=you@example.com bash setup.sh
 #
 # Env: DOMAIN (required), LETSENCRYPT_EMAIL (enables HTTPS), ADMIN_EMAIL (+ ADMIN_PASSWORD, asked if missing),
-#      REPO_URL, DATA=masters|demo (first setup only), APP_USER=lofcrm, LOF_PORT=8787
+#      REPO_URL, DATA=masters|demo (first setup only), APP_USER=lofcrm, LOF_PORT=8787,
+#      WEB_SERVER=nginx|none (default: none when CyberPanel/OpenLiteSpeed is installed, otherwise nginx)
 set -euo pipefail
 
 DOMAIN="${DOMAIN:?Set DOMAIN, e.g. DOMAIN=crm.example.com}"
@@ -17,6 +18,8 @@ ENV_DIR=/etc/lof-crm
 ENV_FILE=$ENV_DIR/env
 PORT="${LOF_PORT:-8787}"
 DATA="${DATA:-masters}"
+# CyberPanel's OpenLiteSpeed already owns ports 80/443 – installing nginx there would break the hosted sites
+if [ -d /usr/local/lsws ]; then WEB_SERVER="${WEB_SERVER:-none}"; else WEB_SERVER="${WEB_SERVER:-nginx}"; fi
 [ "$(id -u)" = 0 ] || { echo "Run as root (sudo)"; exit 1; }
 step() { echo; echo "▶ $*"; }
 as_app() { sudo -u "$APP_USER" -H env LOF_APP_DIR="$APP_DIR" LOF_STATE_DIR="$STATE_DIR" LOF_ENV_FILE="$ENV_FILE" LOF_PORT="$PORT" "$@"; }
@@ -25,7 +28,8 @@ rand() { head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c "${1:-4
 step "Packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq ca-certificates curl git nginx sqlite3 cron sudo >/dev/null
+apt-get install -y -qq ca-certificates curl git sqlite3 cron sudo >/dev/null
+[ "$WEB_SERVER" = nginx ] && apt-get install -y -qq nginx >/dev/null
 if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 22 ]; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null
   apt-get install -y -qq nodejs >/dev/null
@@ -138,6 +142,13 @@ CRON_LINE="*/5 * * * * curl -fsS -o /dev/null 'http://127.0.0.1:$PORT/cdn-cgi/ha
 ( crontab -u "$APP_USER" -l 2>/dev/null | grep -v 'cdn-cgi/handler/scheduled' || true; echo "$CRON_LINE" ) | crontab -u "$APP_USER" -
 echo "  installed"
 
+if [ "$WEB_SERVER" != nginx ]; then
+  step "Web server: OpenLiteSpeed / CyberPanel (nginx not installed)"
+  echo "  The CRM listens on 127.0.0.1:$PORT. In CyberPanel: create the website $DOMAIN, issue its SSL,"
+  echo "  then paste the two blocks below (also in $APP_DIR/deploy/vps/openlitespeed-proxy.conf):"
+  echo
+  sed -e "s/__PORT__/$PORT/g" "$APP_DIR/deploy/vps/openlitespeed-proxy.conf"
+else
 step "nginx ($DOMAIN)"
 sed -e "s/__DOMAIN__/$DOMAIN/g" -e "s/__PORT__/$PORT/g" "$APP_DIR/deploy/vps/nginx-lof-crm.conf" > /etc/nginx/sites-available/lof-crm
 ln -sf /etc/nginx/sites-available/lof-crm /etc/nginx/sites-enabled/lof-crm
@@ -148,6 +159,7 @@ if [ -n "${LETSENCRYPT_EMAIL:-}" ]; then
   certbot --nginx -n --agree-tos --redirect -m "$LETSENCRYPT_EMAIL" -d "$DOMAIN"
 else
   echo "  HTTP only – set LETSENCRYPT_EMAIL and run again for HTTPS (sign-in needs https://$DOMAIN)"
+fi
 fi
 
 cat <<EOF

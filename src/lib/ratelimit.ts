@@ -14,4 +14,13 @@ export async function allow(env: Env, key: string, limit: number, windowSec: num
   return (r?.count ?? 0) <= limit;
 }
 
-export const clientIp = (req: Request) => req.headers.get('cf-connecting-ip') || req.headers.get('x-real-ip') || 'unknown';
+/** Client address. On a self-hosted server the runtime reports the local reverse proxy (loopback), so the
+ *  address that proxy appended to X-Forwarded-For (the rightmost entry) is used instead. */
+export const clientIp = (req: Request) => {
+  const ip = req.headers.get('cf-connecting-ip') || req.headers.get('x-real-ip') || '';
+  if (/^(127\.|::1$|::ffff:127\.)/.test(ip)) {
+    const fwd = (req.headers.get('x-forwarded-for') || '').split(',').map((s) => s.trim()).filter(Boolean).pop();
+    if (fwd) return fwd;
+  }
+  return ip || 'unknown';
+};
