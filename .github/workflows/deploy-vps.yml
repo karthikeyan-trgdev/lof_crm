@@ -1,0 +1,48 @@
+# Deploys LOF CRM to your own Linux server over SSH on every push to main (or from Actions → Run workflow).
+# One-time server setup: deploy/vps/server-setup.sh – see DEPLOY-VPS.md.
+# Repository secrets needed (Settings → Secrets and variables → Actions):
+#   SSH_HOST          server name or IP
+#   SSH_USER          app user on the server (lofcrm)
+#   SSH_PRIVATE_KEY   private key printed by server-setup.sh
+#   SSH_KNOWN_HOSTS   output of `ssh-keyscan -t ed25519 <server>` (pins the server's identity)
+#   SSH_PORT          (optional) default 22
+name: Deploy to VPS
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: SSH key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Deploy
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+        run: |
+          if [ -z "$SSH_HOST" ]; then echo "::warning::SSH_HOST secret not set – skipping deployment (see DEPLOY-VPS.md)"; exit 0; fi
+          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            "$SSH_USER@$SSH_HOST" "bash /opt/lof-crm/deploy/vps/remote-deploy.sh $GITHUB_SHA"

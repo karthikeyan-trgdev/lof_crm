@@ -1,5 +1,7 @@
 # Hosting LOF CRM – step by step
 
+> Hosting on your own Linux server instead (SSH + GitHub Actions)? See [DEPLOY-VPS.md](DEPLOY-VPS.md).
+
 The CRM runs on **Cloudflare** (Workers + D1 database). A free Cloudflare account is enough to start; the paid
 Workers plan (USD 5/month) is recommended for production because it raises the limits on database reads and
 background jobs.
