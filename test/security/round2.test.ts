@@ -93,6 +93,9 @@ describe('sign-in hardening (N12, N13)', () => {
     expect((await t.call('POST', '/api/v1/auth/login', { raw, headers: { 'content-type': 'application/json', origin: 'https://evil.example', 'sec-fetch-site': 'cross-site' } })).status).toBe(403);
     // Behind a reverse proxy that rewrites Origin, the browser's own Sec-Fetch-Site still marks a same-origin sign-in
     expect((await t.call('POST', '/api/v1/auth/login', { raw, headers: { 'content-type': 'application/json', origin: 'http://lofcrm', 'sec-fetch-site': 'same-origin' } })).status).toBe(200);
+    // A proxy that repeats the header: accepted only when every copy is this app
+    expect((await t.call('POST', '/api/v1/auth/login', { raw, headers: { 'content-type': 'application/json', origin: 'https://crm.test, https://evil.example' } })).status).toBe(403);
+    expect((await t.call('POST', '/api/v1/auth/login', { raw, headers: { 'content-type': 'application/json', origin: 'https://crm.test, https://crm.test' } })).status).toBe(200);
     expect((await t.call('POST', '/api/v1/auth/login', { raw, headers: { 'content-type': 'application/json', origin: 'https://crm.test' } })).status).toBe(200);
   });
   it('rate-limits turning two-step verification off', async () => {

@@ -39,10 +39,12 @@ function startStage(env: Env, row: any, role: string): Stage {
 auth.post('/login', async (c) => {
   // Only JSON bodies (no cross-site HTML form posts), and a browser Origin must be this app
   if (!(c.req.header('content-type') || '').toLowerCase().startsWith('application/json')) throw new HttpError(415, 'Send the sign-in as JSON');
-  // Sec-Fetch-Site is set by the browser itself (pages cannot forge it) and survives reverse proxies that rewrite Origin
+  // Sec-Fetch-Site is set by the browser itself (pages cannot forge it). Some reverse proxies (OpenLiteSpeed) repeat
+  // the Origin header, which arrives joined as "a, a" – accepted only when every copy is this app.
   const origin = c.req.header('origin');
   const sameOrigin = c.req.header('sec-fetch-site') === 'same-origin';
-  if (origin && !sameOrigin && origin !== new URL(c.env.APP_BASE_URL).origin && origin !== new URL(c.req.url).origin) {
+  const allowed = [new URL(c.env.APP_BASE_URL).origin, new URL(c.req.url).origin];
+  if (origin && !sameOrigin && !origin.split(',').every((o) => allowed.includes(o.trim()))) {
     console.warn(`login refused: origin ${origin} is not ${new URL(c.env.APP_BASE_URL).origin}`);
     throw new HttpError(403, 'Sign-in from another site is not allowed');
   }
