@@ -51,17 +51,30 @@ certbot --version
 step "Validation path /.well-known/acme-challenge/"
 cp "$WEBROOT/.htaccess" "$WEBROOT/.htaccess.bak-$stamp" 2>/dev/null || true
 write_htaccess 0
-install -d -o "$(stat -c %U "$WEBROOT")" -g "$(stat -c %G "$WEBROOT")" "$WEBROOT/.well-known/acme-challenge"
-echo ok > "$WEBROOT/.well-known/acme-challenge/lofcrm-check"; chmod 644 "$WEBROOT/.well-known/acme-challenge/lofcrm-check"
+# CyberPanel maps /.well-known/acme-challenge to a shared folder with a vhost context
+# (usually /usr/local/lsws/Example/html/.well-known/acme-challenge); otherwise it is the site folder
+ACME_DIR=$(awk '/^context[ \t]+\/\.well-known\/acme-challenge/ {c=1; next} c && /^[ \t]*location[ \t]/ {print $2; exit} c && /^\}/ {c=0}' "$VHOST_CONF")
+ACME_DIR="${ACME_DIR:-$WEBROOT/.well-known/acme-challenge}"
+ACME_DIR="${ACME_DIR//\$VH_ROOT//home/$DOMAIN}"; ACME_DIR="${ACME_DIR//\$DOC_ROOT/$WEBROOT}"; ACME_DIR="${ACME_DIR//\$SERVER_ROOT/$LSWS}"
+ACME_DIR="${ACME_DIR%/}"
+case "$ACME_DIR" in
+  */.well-known/acme-challenge) CHALLENGE_ROOT="${ACME_DIR%/.well-known/acme-challenge}" ;;
+  *) echo "  /.well-known/acme-challenge is served from $ACME_DIR, which certbot's webroot mode cannot use"; exit 1 ;;
+esac
+echo "  served from $ACME_DIR"
+mkdir -p "$ACME_DIR"; chmod 755 "$ACME_DIR"
+echo ok > "$ACME_DIR/lofcrm-check"; chmod 644 "$ACME_DIR/lofcrm-check"
+rm -rf "$WEBROOT/.well-known/acme-challenge/lofcrm-check"
 systemctl restart lsws; sleep 3
 if [ "$(curl -s "http://$DOMAIN/.well-known/acme-challenge/lofcrm-check")" != ok ]; then
-  echo "  http://$DOMAIN/.well-known/acme-challenge/ is not served from $WEBROOT – check DNS and the site's rewrite rules"; exit 1
+  rm -f "$ACME_DIR/lofcrm-check"
+  echo "  http://$DOMAIN/.well-known/acme-challenge/ is not served from $ACME_DIR – check DNS and the site's rewrite rules"; exit 1
 fi
-rm -f "$WEBROOT/.well-known/acme-challenge/lofcrm-check"
+rm -f "$ACME_DIR/lofcrm-check"
 echo "  reachable"
 
 step "Certificate ($CERT_NAME)"
-certbot certonly --webroot -w "$WEBROOT" -d "$DOMAIN" --cert-name "$CERT_NAME" \
+certbot certonly --webroot -w "$CHALLENGE_ROOT" -d "$DOMAIN" --cert-name "$CERT_NAME" \
   -m "$EMAIL" --agree-tos -n --keep-until-expiring
 [ -f "$LIVE/fullchain.pem" ] || { echo "  certbot did not produce $LIVE"; exit 1; }
 
