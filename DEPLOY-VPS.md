@@ -61,6 +61,11 @@ install nginx or certbot. OpenLiteSpeed proxies to the CRM instead:
    and are printed by the setup script.
 3. Open `https://crm.yourdomain.com`. A 503 error means the CRM isn't running. Check with `sudo -u lofcrm pm2 status`.
 
+**HTTPS with certbot** (instead of CyberPanel's *Issue SSL*): `DOMAIN=crm.yourdomain.com LETSENCRYPT_EMAIL=you@yourdomain.com bash /opt/lof-crm/deploy/vps/ssl-certbot.sh`
+gets a free Let's Encrypt certificate, installs it in OpenLiteSpeed, redirects http to https, switches `APP_BASE_URL`
+to https and sets up automatic renewal. certbot's timer renews it 30 days before expiry, and a hook restarts LiteSpeed
+afterwards. Check renewal any time with `certbot renew --dry-run`.
+
 The CRM takes the visitor's address from the rightmost `X-Forwarded-For` entry when the request comes from the
 local proxy. Rate limits and the session log are then per visitor, not per proxy.
 
