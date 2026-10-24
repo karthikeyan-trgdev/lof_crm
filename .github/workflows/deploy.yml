@@ -1,0 +1,48 @@
+# Deploys LOF CRM to Cloudflare. Run it from GitHub → Actions → "Deploy to Cloudflare" → Run workflow.
+# Repository secrets needed (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN   token with: Workers Scripts Edit, D1 Edit, Queues Edit, Account Settings Read
+#   CLOUDFLARE_ACCOUNT_ID  your Cloudflare account ID
+#   ADMIN_EMAIL, ADMIN_PASSWORD   (optional) first System Administrator – must be changed at first sign-in
+# Optional repository variable: APP_BASE_URL (your custom domain; default is the workers.dev address)
+name: Deploy to Cloudflare
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Where to deploy
+        type: choice
+        options: [production, staging]
+        default: production
+      data:
+        description: Starting data (only used the first time the database is set up)
+        type: choice
+        options: [masters, demo]
+        default: masters
+concurrency: deploy-${{ inputs.environment }}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Deploy
+        run: node scripts/cf-deploy.mjs --data ${{ inputs.data }} ${{ inputs.environment == 'staging' && '--env staging' || '' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          APP_BASE_URL: ${{ vars.APP_BASE_URL }}

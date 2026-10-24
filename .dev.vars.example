@@ -1,0 +1,26 @@
+# Copy to .dev.vars for `wrangler dev`. Never commit real values.
+APP_ENV=development
+INTEGRATION_MODE=mock
+ALLOW_IMPERSONATION=true
+# Two-step verification is off locally; production requires it for System Administrator and Management
+MFA_REQUIRED_ROLES=
+APP_BASE_URL=http://localhost:8787
+JWT_SECRET=dev-only-change-me-32-chars-minimum!!
+WEBSITE_FORM_SECRET=dev-website-secret
+META_APP_SECRET=dev-meta-app-secret
+META_VERIFY_TOKEN=dev-meta-verify
+META_PAGE_ACCESS_TOKEN=
+WHATSAPP_ACCESS_TOKEN=
+WHATSAPP_APP_SECRET=dev-wa-app-secret
+WHATSAPP_VERIFY_TOKEN=dev-wa-verify
+EXOTEL_API_KEY=
+EXOTEL_API_TOKEN=
+EXOTEL_WEBHOOK_TOKEN=dev-exotel-token
+LMS_TOKEN=
+TELR_AUTH_KEY=
+RAZORPAY_KEY_SECRET=
+RAZORPAY_WEBHOOK_SECRET=dev-razorpay-webhook
+ERPNEXT_API_KEY=
+ERPNEXT_API_SECRET=
+GCAL_SERVICE_ACCOUNT_JSON=
+RESEND_API_KEY=

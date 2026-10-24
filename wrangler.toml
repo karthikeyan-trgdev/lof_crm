@@ -1,0 +1,85 @@
+name = "lof-crm"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Static frontend (prototype screens wired to the API)
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/webhooks/*", "/health"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "lof_crm"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"   # wrangler d1 create lof_crm
+migrations_dir = "migrations"
+
+# Background jobs: LMS enrol/cancel calls, outbound WhatsApp/email, ERPNext push, calendar
+[[queues.producers]]
+binding = "JOBS"
+queue = "lof-crm-jobs"
+
+[[queues.consumers]]
+queue = "lof-crm-jobs"
+max_batch_size = 10
+max_retries = 3
+dead_letter_queue = "lof-crm-jobs-dlq"
+
+# SLA escalation, overdue follow-ups and instalments, LMS auto-retry, Telr reconciliation
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+APP_ENV = "production"
+APP_BASE_URL = "https://crm.labofuture.example"
+# "auto": an integration runs live when it is enabled in Configuration AND its secrets are set; otherwise mock.
+# "mock": force every integration to mock (staging / demos / tests).
+INTEGRATION_MODE = "auto"
+ALLOW_IMPERSONATION = "false"
+# Roles that must use an authenticator app (two-step verification) at sign-in
+MFA_REQUIRED_ROLES = "System Administrator,Management"
+SESSION_IDLE_MINUTES = "60"
+EXOTEL_ALLOWED_IPS = ""                    # optional: Exotel's published webhook IPs, comma separated
+META_GRAPH_VERSION = "v21.0"
+WHATSAPP_PHONE_NUMBER_ID = ""
+WHATSAPP_TEMPLATE_LANG = "en"
+EXOTEL_SUBDOMAIN = "api.exotel.com"        # api.in.exotel.com for the Mumbai cluster
+EXOTEL_SID = ""
+EXOTEL_CALLER_ID = ""
+LMS_URL = ""                               # LOF booking platform endpoint (one address for the enrol and cancel calls)
+TELR_STORE_ID = ""
+TELR_TEST_MODE = "1"
+RAZORPAY_KEY_ID = ""
+ERPNEXT_URL = ""
+ERPNEXT_COMPANY = "Lab of Future"
+ERPNEXT_PAID_TO_AED = ""
+ERPNEXT_PAID_TO_INR = ""
+GCAL_CALENDAR_ID = ""
+EMAIL_FROM = "Lab of Future <no-reply@labofuture.example>"
+
+# Secrets – set with `wrangler secret put NAME` (see .dev.vars.example):
+# JWT_SECRET (≥ 32 random characters), TURNSTILE_SECRET (optional), WEBSITE_FORM_SECRET, META_APP_SECRET, META_VERIFY_TOKEN, META_PAGE_ACCESS_TOKEN,
+# WHATSAPP_ACCESS_TOKEN, WHATSAPP_APP_SECRET, WHATSAPP_VERIFY_TOKEN, EXOTEL_API_KEY, EXOTEL_API_TOKEN,
+# EXOTEL_WEBHOOK_TOKEN, LMS_TOKEN, TELR_AUTH_KEY, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET,
+# ERPNEXT_API_KEY, ERPNEXT_API_SECRET, GCAL_SERVICE_ACCOUNT_JSON, RESEND_API_KEY
+
+[env.staging]
+name = "lof-crm-staging"
+vars = { APP_ENV = "staging", INTEGRATION_MODE = "mock", ALLOW_IMPERSONATION = "true", APP_BASE_URL = "https://lof-crm-staging.workers.dev", MFA_REQUIRED_ROLES = "System Administrator,Management", SESSION_IDLE_MINUTES = "60" }
+# Bindings are not inherited by environments – staging gets its own database and queue
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "lof_crm_staging"
+database_id = "REPLACE_WITH_STAGING_D1_DATABASE_ID"   # wrangler d1 create lof_crm_staging
+migrations_dir = "migrations"
+
+[[env.staging.queues.producers]]
+binding = "JOBS"
+queue = "lof-crm-jobs-staging"
+
+[[env.staging.queues.consumers]]
+queue = "lof-crm-jobs-staging"
+max_batch_size = 10
+max_retries = 3
