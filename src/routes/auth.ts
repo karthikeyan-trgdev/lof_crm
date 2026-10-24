@@ -39,8 +39,13 @@ function startStage(env: Env, row: any, role: string): Stage {
 auth.post('/login', async (c) => {
   // Only JSON bodies (no cross-site HTML form posts), and a browser Origin must be this app
   if (!(c.req.header('content-type') || '').toLowerCase().startsWith('application/json')) throw new HttpError(415, 'Send the sign-in as JSON');
+  // Sec-Fetch-Site is set by the browser itself (pages cannot forge it) and survives reverse proxies that rewrite Origin
   const origin = c.req.header('origin');
-  if (origin && origin !== new URL(c.env.APP_BASE_URL).origin && origin !== new URL(c.req.url).origin) throw new HttpError(403, 'Sign-in from another site is not allowed');
+  const sameOrigin = c.req.header('sec-fetch-site') === 'same-origin';
+  if (origin && !sameOrigin && origin !== new URL(c.env.APP_BASE_URL).origin && origin !== new URL(c.req.url).origin) {
+    console.warn(`login refused: origin ${origin} is not ${new URL(c.env.APP_BASE_URL).origin}`);
+    throw new HttpError(403, 'Sign-in from another site is not allowed');
+  }
   const body = await c.req.json<{ email?: string; password?: string; code?: string }>().catch(() => ({} as any));
   const email = String(body.email || '').trim().toLowerCase();
   if (!email || !body.password) throw new HttpError(400, 'E-mail and password are required');
