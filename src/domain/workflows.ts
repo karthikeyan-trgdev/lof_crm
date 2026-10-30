@@ -6,7 +6,8 @@ import * as lms from '../integrations/lms';
 import { lmsEnrolPayload, lmsMissing } from './terms';
 import * as wa from '../integrations/whatsapp';
 import * as erp from '../integrations/erpnext';
-import { calendarInsert, sendEmail } from '../integrations/gcal-email';
+import { calendarInsert } from '../integrations/gcal-email';
+import { deliverEmail } from './mail';
 import { gatewayFor, telrCreate, razorpayCreate, type LinkInput } from '../integrations/payments';
 import { addAudit, addEv, fmtDT, money, notify, recordPayment, r2, templateParams } from './core';
 import { ID_FORMAT } from '../lib/indexing';
@@ -105,7 +106,7 @@ export async function sendComm(env: Env, repo: Repo, commId: string) {
       const mode = modeFor(env, cfg, 'email', isTest);
       const branch = await repo.get<any>('branch', l.branch);
       const subject = c.subj || tpl?.subject || `Your enquiry at Lab of Future ${branch?.name || ''}`.trim();
-      const r = await sendEmail({ env, mode, isTest }, { to: l.email, subject, text: c.text, ref: c.id });
+      const r = await deliverEmail(env, cfg, { mode, isTest }, { to: l.email, subject, text: c.text, ref: c.id });
       c.mailId = r.id;
       c.status = mode === 'live' ? 'Sent' : 'Sent (mock)';
     }
@@ -128,7 +129,7 @@ export async function sendStudentMail(env: Env, repo: Repo, studentId: string, i
   const to = entry.to || (s.parents || [])[0]?.email;
   try {
     if (!to) throw new Error('No parent e-mail');
-    const r = await sendEmail({ env, mode, isTest: repo.isTest || !!s.test }, { to, subject: `Welcome to Lab of Future – ${s.first} ${s.last} (${s.id})`, text: entry.text, ref: s.id });
+    const r = await deliverEmail(env, cfg, { mode, isTest: repo.isTest || !!s.test }, { to, subject: `Welcome to Lab of Future – ${s.first} ${s.last} (${s.id})`, text: entry.text, ref: s.id });
     entry.mailId = r.id;
     entry.status = mode === 'live' ? 'Sent' : 'Sent (mock)';
   } catch (err: any) {
@@ -146,7 +147,7 @@ export async function sendToParent(env: Env, repo: Repo, s: any, channel: 'Whats
     if (channel === 'Email') {
       if (!parent.email) throw new Error('No parent e-mail on the student record');
       const mode = modeFor(env, cfg, 'email', !!s.test || repo.isTest);
-      const r = await sendEmail({ env, mode, isTest: !!s.test }, { to: parent.email, subject: `Payment link – ${s.first} ${s.last} (${s.id})`, text, ref: s.id });
+      const r = await deliverEmail(env, cfg, { mode, isTest: !!s.test }, { to: parent.email, subject: `Payment link – ${s.first} ${s.last} (${s.id})`, text, ref: s.id });
       entry.mailId = r.id; entry.status = mode === 'live' ? 'Sent' : 'Sent (mock)';
     } else {
       if (!parent.mobile) throw new Error('No parent mobile on the student record');

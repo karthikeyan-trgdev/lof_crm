@@ -23,6 +23,8 @@ import { HttpError } from '../types';
 import { calcFee, feeFor, r2, recalcEnrollment, money, dayKey, msgFrom } from '../domain/core';
 import { hashPassword } from '../lib/crypto';
 import { buildSched, daysBetween, refundCalc, termProblem, refundProblem, targetsProblem, lmsProblem } from '../domain/terms';
+import { checkEmailTemplates } from '../domain/email-templates';
+import { checkMailSettings } from '../domain/mail';
 
 export interface Change { coll: string; id: string; op: 'upsert' | 'delete'; doc?: any; base?: any }
 export interface SettingChange { key: string; doc: any }
@@ -648,6 +650,14 @@ export async function applySync(env: Env, repo: Repo, user: User, perms: any, ch
         || (doc.targets !== undefined && targetsProblem(doc.targets, counsellors))
         || (doc.lms !== undefined && lmsProblem(doc.lms));
       if (problem) { rejected.push({ coll: 'settings', id: 'cfg', reason: problem }); continue; }
+      if (doc.emailTpls !== undefined) {
+        const r = checkEmailTemplates(doc.emailTpls, branches.map((b) => b.id));
+        if ('problem' in r) { rejected.push({ coll: 'settings', id: 'cfg', reason: r.problem }); continue; }
+        doc.emailTpls = r.tpls;
+      }
+      const mail = checkMailSettings(doc.mailOut, doc.mailIn, branches);
+      if ('problem' in mail) { rejected.push({ coll: 'settings', id: 'cfg', reason: mail.problem }); continue; }
+      Object.assign(doc, mail);
     }
     settingWrites.push({ key: s.key, doc });
   }

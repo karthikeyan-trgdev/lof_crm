@@ -4,6 +4,8 @@ import { can, inList } from '../lib/auth';
 import type { Env, User } from '../types';
 import { INTEGRATIONS, modeFor, missingSecrets, type IntegrationKey } from '../integrations/base';
 import { cfgDefaults } from '../domain/terms';
+import { DEFAULT_EMAIL_TEMPLATES, EMAIL_PLACEHOLDERS, EMAIL_TPL_CATEGORIES } from '../domain/email-templates';
+import { MAIL_IN_DEFAULTS, MAIL_OUT_DEFAULTS } from '../domain/mail';
 
 const rows = async (env: Env, sql: string, binds: unknown[]) =>
   ((await env.DB.prepare(sql).bind(...binds).all<{ data: string }>()).results || []).map((r) => JSON.parse(r.data));
@@ -50,6 +52,9 @@ export async function bootstrap(env: Env, repo: Repo, user: User, perms: any) {
   // Settings added after go-live: show defaults until an administrator saves them
   const def = cfgDefaults(programs, branches);
   for (const k of ['targets', 'payTerms', 'payTermDefault', 'refund', 'lms'] as const) if (cfgOut[k] === undefined) cfgOut[k] = def[k];
+  if (cfgOut.emailTpls === undefined) cfgOut.emailTpls = structuredClone(DEFAULT_EMAIL_TEMPLATES);
+  cfgOut.mailOut = { ...MAIL_OUT_DEFAULTS, ...(cfgOut.mailOut || {}) };
+  cfgOut.mailIn = { ...structuredClone(MAIL_IN_DEFAULTS), ...(cfgOut.mailIn || {}) };
   cfgOut.integ = cfgOut.integ || {};
   if (!cfgOut.integ.lms) cfgOut.integ.lms = def.lmsInteg;
   for (const p of programs) if (!cfgOut.lms.programmes[p.id]) cfgOut.lms.programmes[p.id] = { track: '', credits: [] };
@@ -58,7 +63,8 @@ export async function bootstrap(env: Env, repo: Repo, user: User, perms: any) {
 
   return {
     me: user,
-    server: { env: env.APP_ENV, now: new Date().toISOString(), impersonation: env.ALLOW_IMPERSONATION === 'true', integrations, lmsSecrets: missingSecrets(env, 'lms').length === 0 },
+    server: { env: env.APP_ENV, now: new Date().toISOString(), impersonation: env.ALLOW_IMPERSONATION === 'true', integrations, lmsSecrets: missingSecrets(env, 'lms').length === 0,
+      emailTemplates: { categories: EMAIL_TPL_CATEGORIES, placeholders: EMAIL_PLACEHOLDERS } },
     data: { branches, programs, fees, discounts, staff: staffOut, cfg: cfgOut, perms: permsDoc, scope, fx, hist, leads, opps, tasks, calls, comms, students, enr, pay, ms, refunds, approvals, notifs, audit },
     seq,
   };

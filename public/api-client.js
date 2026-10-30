@@ -789,6 +789,222 @@
         '<pre class="mono sm" style="white-space:pre-wrap;word-break:break-word;max-height:60vh;overflow:auto;background:var(--bg2,#f6f7f9);padding:12px;border-radius:6px">' + esc(JSON.stringify(m.r.record, null, 2)) + '</pre>' };
   };
 
+  // ------------------------------------------------------------------ Configuration → Email Templates (after Communication)
+  CTABS.splice(CTABS.findIndex(function (t) { return t[0] === 'comms'; }) + 1, 0, ['emailTpls', 'Email Templates']);
+  var ET = { cat: '', q: '' }, etLastField = 'body';
+  function etMeta() { return SERVER.emailTemplates || { categories: [], placeholders: {} }; }
+  function etList() { return S.cfg.emailTpls || (S.cfg.emailTpls = []); }
+  function etById(id) { return etList().find(function (t) { return t.id === id; }); }
+  function etBranch(id) { if (id === 'All') return 'All branches'; var b = (S.branches || []).find(function (x) { return x.id === id; }); return b ? b.name : id; }
+  function etSample(s) { var p = etMeta().placeholders; return String(s).replace(/\{(\w+)\}/g, function (all, k) { return p[k] ? p[k].sample : all; }); }
+  CFG.emailTpls = function () {
+    var meta = etMeta(), edit = can('configuration', 'E'), q = ET.q.toLowerCase(), all = etList();
+    var rows = all.filter(function (t) { return (!ET.cat || t.cat === ET.cat) && (!q || (t.n + ' ' + t.subject + ' ' + t.body).toLowerCase().indexOf(q) >= 0); });
+    var cats = '<div class="chips" style="margin-bottom:12px">' + [''].concat(meta.categories).map(function (c) {
+      var n = all.filter(function (t) { return !c || t.cat === c; }).length;
+      return '<a class="chip' + (ET.cat === c ? ' on' : '') + '" data-act="etCat" data-c="' + esc(c) + '" tabindex="0">' + esc(c || 'All') + ' <span class="muted xs">' + n + '</span></a>';
+    }).join('') + '</div>';
+    var search = '<div class="tb" style="border:0;padding:0 0 12px"><input type="search" id="etq" data-input="etq" placeholder="Search name, subject or message" value="' + esc(ET.q) + '" aria-label="Search e-mail templates" style="min-width:min(100%,300px)"></div>';
+    var list = rows.length ? table('etpl', [
+      { h: 'Template', f: function (t) { return '<b>' + esc(t.n) + '</b><div class="muted xs">' + esc(t.cat) + '</div>'; }, s: function (t) { return t.cat + ' ' + t.n; } },
+      { h: 'Subject', f: function (t) { return '<span class="sm">' + esc(t.subject) + '</span>'; } },
+      { h: 'Branch', f: function (t) { return esc(etBranch(t.branch)); }, s: function (t) { return etBranch(t.branch); } },
+      { h: 'Status', f: function (t) { return bdg(t.active ? 'Active' : 'Inactive', t.active ? 'ok' : ''); } },
+      { h: '', f: function (t) {
+        return '<span class="row" style="justify-content:flex-end;flex-wrap:nowrap"><button class="btn sm" data-act="etPreview" data-id="' + t.id + '">Preview</button>' +
+          (edit ? '<button class="btn sm" data-act="etEdit" data-id="' + t.id + '">Edit</button><button class="btn sm ghost" data-act="etCopy" data-id="' + t.id + '">Duplicate</button>' : '') + '</span>';
+      } },
+    ], rows, { all: 1 }) : emptyBox('No templates', ET.q || ET.cat ? 'Clear the search or pick another category.' : 'Add the first template.');
+    return card('Email Templates<div class="muted xs" style="font-weight:400">E-mails to parents and clients – fee receipts, reminders, competitions, progress updates and notices.</div>',
+      cats + search + list, { act: edit ? '<button class="btn sm primary" data-act="etAdd">' + ic('plus') + ' Add template</button>' : '' }) +
+      '<p class="muted xs">Placeholders such as {student_name} or {receipt_no} are filled in when an e-mail is sent. A template for one branch is used instead of the “All branches” template with the same name. Automated lead and enrolment messages are under Communication.</p>';
+  };
+  ACT.etCat = function (d) { ET.cat = d.c || ''; render(); };
+  INP.etq = function (el) { ET.q = el.value; render(); };
+  ACT.etAdd = function () { openModal('etTpl', {}); };
+  ACT.etEdit = function (d) { openModal('etTpl', { id: d.id }); };
+  ACT.etCopy = function (d) { openModal('etTpl', { copy: d.id }); };
+  ACT.etPreview = function (d) { openModal('etPreview', { id: d.id }); };
+  ACT.etDelete = function (d) { var t = etById(d.id); if (t) confirmBox('Delete template', 'Delete <b>' + esc(t.n) + '</b>? E-mails already sent are not affected.', 'etDelete', d.id, 'Delete', true); };
+  CONFIRM.etDelete = function (id) {
+    var t = etById(id); if (!t) return;
+    S.cfg.emailTpls = etList().filter(function (x) { return x.id !== id; });
+    cfgSave('E-mail template ' + t.n, 'Deleted');
+  };
+  // Placeholder chips insert at the cursor of the subject or message field (whichever was used last)
+  document.addEventListener('focusin', function (e) { if (e.target && (e.target.id === 'f_subject' || e.target.id === 'f_body')) etLastField = e.target.id.slice(2); });
+  ACT.etIns = function (d) {
+    var el = document.getElementById('f_' + etLastField); if (!el) return;
+    var v = '{' + d.k + '}', a = el.selectionStart == null ? el.value.length : el.selectionStart, b = el.selectionEnd == null ? a : el.selectionEnd;
+    el.value = el.value.slice(0, a) + v + el.value.slice(b);
+    el.focus(); el.selectionStart = el.selectionEnd = a + v.length;
+  };
+  MODALS.etTpl = function (m) {
+    var meta = etMeta(), src = etById(m.id || m.copy);
+    var t = src ? Object.assign({}, src) : { cat: ET.cat || meta.categories[0], n: '', subject: '', body: '', branch: 'All', active: true };
+    if (m.copy) t.n = t.n + ' (copy)';
+    var chips = Object.keys(meta.placeholders).map(function (k) { return '<a class="chip" data-act="etIns" data-k="' + k + '" tabindex="0" title="' + esc(meta.placeholders[k].label) + '">{' + k + '}</a>'; }).join('');
+    return { title: m.id ? 'Edit e-mail template' : 'Add e-mail template', size: 'lg', form: 'etTpl',
+      foot: '<button class="btn" type="button" data-act="closeModal">Cancel</button>' + (m.id ? '<button class="btn danger" type="button" data-act="etDelete" data-id="' + esc(m.id) + '">Delete</button>' : '') + '<button class="btn primary" type="submit" form="mform">Save template</button>',
+      body: '<input type="hidden" name="oid" value="' + esc(m.id || '') + '"><div class="fgrid">' +
+        F('Category', 'cat', { v: t.cat, opts: meta.categories, req: 1 }) + F('Template name', 'n', { v: t.n, req: 1, ph: 'e.g. Fee receipt' }) +
+        F('Branch', 'branch', { v: t.branch, opts: [['All', 'All branches']].concat((S.branches || []).map(function (b) { return [b.id, b.name]; })) }) +
+        CK('Active – available for sending', 'active', t.active) +
+        F('Subject', 'subject', { v: t.subject, req: 1, full: 1 }) +
+        F('Message', 'body', { t: 'textarea', rows: 12, v: t.body, req: 1, full: 1, help: 'Plain text. Blank lines start a new paragraph.' }) +
+        '<div class="f full"><label>Placeholders – click to insert at the cursor</label><div class="chips">' + chips + '</div></div></div>' };
+  };
+  SUB.etTpl = function (d, f) {
+    if (!need(f, d, ['n', 'subject', 'body'])) return;
+    var known = etMeta().placeholders, name = d.n.trim(), branch = d.branch || 'All';
+    var unknown = function (s) { return (String(s).match(/\{[^{}]*\}/g) || []).map(function (p) { return p.slice(1, -1); }).find(function (k) { return !known[k]; }); };
+    var bs = unknown(d.subject), bb = unknown(d.body);
+    if (bs !== undefined) { setErr(f, 'subject', 'Unknown placeholder {' + bs + '}'); return; }
+    if (bb !== undefined) { setErr(f, 'body', 'Unknown placeholder {' + bb + '}'); return; }
+    if (etList().some(function (t) { return t.id !== d.oid && t.n.toLowerCase() === name.toLowerCase() && t.branch === branch; })) { setErr(f, 'n', 'A template with this name already exists for this branch'); return; }
+    var o = { cat: d.cat, n: name, subject: d.subject.trim(), body: d.body, branch: branch, active: !!d.active };
+    if (d.oid) Object.assign(etById(d.oid), o);
+    else {
+      var next = etList().reduce(function (mx, t) { return Math.max(mx, +String(t.id).replace(/\D/g, '') || 0); }, 0) + 1;
+      etList().push(Object.assign({ id: 'ET' + next }, o));
+    }
+    closeModal();
+    cfgSave('E-mail template ' + name, o.cat + ' · ' + etBranch(branch));
+  };
+  MODALS.etPreview = function (m) {
+    var t = etById(m.id) || {}, p = etMeta().placeholders;
+    return { title: 'Preview – ' + (t.n || ''), size: 'lg',
+      foot: '<button class="btn" data-act="closeModal">Close</button>' + (can('configuration', 'E') ? '<button class="btn primary" data-act="etEdit" data-id="' + esc(t.id) + '">Edit</button>' : ''),
+      body: '<p class="muted xs" style="margin-top:0">Shown with sample values. Real e-mails use the student’s and parent’s details.</p>' +
+        '<div style="border:1px solid var(--bd);border-radius:8px;overflow:hidden"><div style="padding:10px 14px;border-bottom:1px solid var(--bd)">' +
+        '<div class="muted xs">To: ' + esc(p.parent_name ? p.parent_name.sample : '') + '</div><b>' + esc(etSample(t.subject || '')) + '</b></div>' +
+        '<div class="sm" style="padding:14px;white-space:pre-wrap;line-height:1.55">' + esc(etSample(t.body || '')) + '</div></div>' };
+  };
+
+  // ------------------------------------------------------------------ Configuration → Email Outgoing / Email Incoming
+  CTABS.splice(CTABS.findIndex(function (t) { return t[0] === 'emailTpls'; }) + 1, 0, ['mailOut', 'Email Outgoing'], ['mailIn', 'Email Incoming']);
+  var MAIL = { status: null, inbox: null, loading: false, error: null };
+  var MAIL_RE = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/;
+  function mailLoad() {
+    if (MAIL.loading) return;
+    MAIL.loading = true; MAIL.error = null;
+    Promise.all([req('GET', '/mail/status'), req('GET', '/mail/inbound')])
+      .then(function (r) { MAIL.status = r[0]; MAIL.inbox = r[1].items; })
+      .catch(function (e) { MAIL.error = e.message; })
+      .then(function () { MAIL.loading = false; safeRender(); });
+  }
+  function mailReady() { if (!MAIL.status && !MAIL.loading && !MAIL.error) mailLoad(); return !!MAIL.status; }
+  var mailKV = function (rows) { return '<div class="fgrid">' + rows.map(function (r) { return '<div class="f"><label>' + r[0] + '</label><div>' + r[1] + '</div></div>'; }).join('') + '</div>'; };
+
+  CFG.mailOut = function () {
+    var o = S.cfg.mailOut || {}, edit = can('configuration', 'E'), st = MAIL.status && MAIL.status.outgoing;
+    var status = !mailReady() ? (MAIL.error ? emptyBox('Could not load', MAIL.error) : emptyBox('Loading…', '')) : mailKV([
+      ['Provider', esc(st.provider)],
+      ['Mode', st.mode === 'live' ? bdg('Live – e-mails are delivered', 'ok') : bdg('Mock – nothing is delivered', 'warn')],
+      ['Sending address', '<span class="mono sm">' + esc(st.from || 'not set') + '</span>'],
+      ['Missing settings', st.missing.length ? '<span class="mono xs" style="color:var(--crit)">' + st.missing.map(esc).join(', ') + '</span>' : bdg('None', 'ok')],
+    ]) + (o.on === false ? '<div class="banner" style="margin-top:12px">' + ic('alert') + '<span><b>Sending is paused.</b> E-mails are not sent until you turn sending back on.</span></div>' : '');
+    var form = cfgForm('mailOut',
+      swRow('Send e-mails', 'on', o.on !== false, 'Turn off to pause every e-mail the CRM sends (messages are marked Failed and can be sent again).') +
+      '<div class="fgrid" style="margin-top:12px">' +
+      F('Sender name', 'fromName', { v: o.fromName, req: 1, help: 'Shown to parents as the sender, e.g. Lab of Future' }) +
+      F('Reply-to address', 'replyTo', { v: o.replyTo, ph: 'communications@laboffuture.com', help: 'Where parent replies go. Leave empty to use the sending address.' }) +
+      F('Send a copy (BCC) to', 'bcc', { v: o.bcc, ph: 'optional', help: 'Keeps a copy of every e-mail in this mailbox' }) +
+      F('Daily sending limit', 'dailyLimit', { t: 'number', min: 0, max: 10000, v: o.dailyLimit, help: 'Stops sending for the day above this number (0 = no limit). Gmail allows about 2,000 a day.' }) +
+      F('Signature', 'signature', { t: 'textarea', rows: 4, v: o.signature, full: 1, ph: 'Lab of Future\n+971 4 000 0000 · laboffuture.com', help: 'Added to the end of every e-mail' }) + '</div>');
+    var test = '<form data-submit="mailTest" class="row" novalidate style="flex-wrap:wrap;gap:8px"><input type="email" name="to" placeholder="your.name@laboffuture.com" aria-label="Send test e-mail to" style="min-width:min(100%,280px)"><button class="btn primary" type="submit">Send test e-mail</button></form>' +
+      '<p class="muted xs">Uses the saved settings above. In mock mode the e-mail is only written to the Integration log.</p>';
+    return card('Connection', status, { act: '<button class="btn sm ghost" data-act="mailRefresh">Refresh</button>' }) + '<div style="height:14px"></div>' +
+      card('Sending rules', edit ? form : mailKV([['Sending', o.on === false ? 'Paused' : 'On'], ['Sender name', esc(o.fromName)], ['Reply-to', esc(o.replyTo || '—')], ['Copy to', esc(o.bcc || '—')], ['Daily limit', esc(o.dailyLimit)]])) +
+      (edit ? '<div style="height:14px"></div>' + card('Test', test) : '') +
+      '<p class="muted xs">These rules apply to every e-mail the CRM sends: lead messages, enrolment welcome, payment links and e-mail templates.</p>';
+  };
+  SUB.cfg_mailOut = function (d, f) {
+    clearErrs(f);
+    if (!need(f, d, ['fromName'])) return;
+    if (/[<>"]/.test(d.fromName)) { setErr(f, 'fromName', 'Do not use < > or quotes'); return; }
+    if (d.replyTo && !MAIL_RE.test(d.replyTo.trim())) { setErr(f, 'replyTo', 'Enter a valid e-mail address'); return; }
+    if (d.bcc && !MAIL_RE.test(d.bcc.trim())) { setErr(f, 'bcc', 'Enter a valid e-mail address'); return; }
+    var lim = Number(d.dailyLimit);
+    if (!Number.isInteger(lim) || lim < 0 || lim > 10000) { setErr(f, 'dailyLimit', 'Whole number from 0 to 10,000'); return; }
+    S.cfg.mailOut = { on: !!d.on, fromName: d.fromName.trim(), replyTo: (d.replyTo || '').trim().toLowerCase(), bcc: (d.bcc || '').trim().toLowerCase(), signature: d.signature || '', dailyLimit: lim };
+    cfgSave('Email Outgoing', (d.on ? 'Sending on' : 'Sending paused') + ' · limit ' + lim + '/day');
+  };
+  SUB.mailTest = function (d) {
+    var to = String(d.to || '').trim();
+    if (!MAIL_RE.test(to)) { toast('Enter a valid e-mail address', 'err'); return; }
+    flush().then(function () { return req('POST', '/mail/test-send', { to: to }); })
+      .then(function (r) { toast(r.mode === 'live' ? 'Test e-mail sent to ' + to : 'Mock mode: test e-mail logged, not delivered', r.mode === 'live' ? 'ok' : 'warn'); })
+      .catch(function (e) { toast(e.message, 'err'); });
+  };
+  ACT.mailRefresh = function () { MAIL.status = null; MAIL.inbox = null; MAIL.error = null; mailLoad(); render(); };
+
+  CFG.mailIn = function () {
+    var r = S.cfg.mailIn || {}, edit = can('configuration', 'E'), ready = mailReady();
+    var brs = (S.branches || []).map(function (b) { return [b.id, b.name]; });
+    var progs = (S.programs || []).map(function (p) { return [p.id, p.name]; });
+    var conn = '<div class="banner">' + ic('mail') + '<span>' + (ready && MAIL.status.incoming.connected ? 'Mailbox connected – new e-mails are imported every 5 minutes.' : '<b>Mailbox not connected yet.</b> Automatic import starts when the Gmail connection is set up. You can set the rules now and test them with the simulation below.') + '</span></div>';
+    var form = cfgForm('mailIn',
+      swRow('Import incoming e-mail', 'on', !!r.on, 'Read new e-mails from the mailbox and file them in the CRM') +
+      swRow('Notify staff when an e-mail arrives', 'notify', r.notify !== false, 'The counsellor (leads) or the branch team (students) gets a CRM notification') +
+      '<div class="fgrid" style="margin-top:12px">' +
+      F('Mailbox', 'mailbox', { v: r.mailbox, ph: 'communications@laboffuture.com' }) +
+      F('E-mail from an unknown sender', 'unknown', { v: r.unknown || 'review', opts: [['review', 'Hold for review – notify the Admissions Head'], ['lead', 'Create a new lead'], ['ignore', 'Ignore']] }) +
+      F('Branch for new leads', 'branch', { v: r.branch, opts: brs, blank: '— choose —', help: 'Used when unknown senders create a lead' }) +
+      F('Programme for new leads', 'prog', { v: r.prog, opts: progs, blank: '— choose —' }) +
+      F('Blocked senders', 'block', { t: 'textarea', rows: 4, v: (r.block || []).join('\n'), full: 1, ph: 'spam@example.com\n@marketing-company.com', help: 'One address or domain per line. E-mails from these senders are never filed.' }) + '</div>');
+    var how = '<ol class="sm" style="margin:0;padding-left:18px;line-height:1.7">' +
+      '<li>Sender is a <b>parent on a student record</b> → filed on that student (on each sibling) and the branch team is notified.</li>' +
+      '<li>Sender is a <b>lead’s e-mail</b> → filed on the newest open lead and its counsellor is notified.</li>' +
+      '<li><b>Unknown sender</b> → held for review, a new lead is created, or ignored (rule above).</li>' +
+      '<li>Blocked senders, auto-replies and bounce messages are skipped. The same e-mail is never filed twice.</li></ol>';
+    var sim = '<form data-submit="mailSim" novalidate><div class="fgrid">' +
+      F('From (e-mail)', 'from', { req: 1, ph: 'parent@example.com', id: 'ms_from' }) + F('Sender name', 'fromName', { ph: 'optional', id: 'ms_name' }) +
+      F('Subject', 'subject', { v: 'Question about the next class', full: 1, id: 'ms_subject' }) +
+      F('Message', 'text', { t: 'textarea', rows: 3, v: 'Hello, can you tell me when the next class starts?', full: 1, id: 'ms_text' }) +
+      '</div><div class="row" style="margin-top:12px"><button class="btn primary" type="submit">Run simulation</button><span class="muted xs">Uses the saved rules. Use a parent’s address to see it land on their record; leads created here are test records (TST-…).</span></div></form>';
+    var rows = (MAIL.inbox || []);
+    var tone = function (s) { return /^Matched|^New lead/.test(s) ? 'ok' : /review/.test(s) ? 'warn' : ''; };
+    var link = function (i) {
+      if (!i.ref) return '<span class="faint">—</span>';
+      return i.ref.split(', ').map(function (id) { return '<a class="link" tabindex="0" data-act="go" data-page="' + (i.refType === 'student' ? 'student' : 'lead') + '" data-id="' + esc(id) + '">' + esc(id) + '</a>'; }).join(', ');
+    };
+    var inbox = !ready ? emptyBox(MAIL.error ? 'Could not load' : 'Loading…', MAIL.error || '') : rows.length ? table('mailin', [
+      { h: 'Received', f: function (i) { return fDT(i.at || i.receivedAt) + (i.sim ? '<div class="muted xs">Simulation</div>' : ''); }, s: function (i) { return i.at || i.receivedAt; } },
+      { h: 'From', f: function (i) { return (i.fromName ? esc(i.fromName) + '<div class="muted xs">' + esc(i.from) + '</div>' : esc(i.from)); } },
+      { h: 'Subject', f: function (i) { return '<b class="sm">' + esc(i.subject) + '</b><div class="muted xs">' + esc((i.snippet || '').slice(0, 90)) + '</div>'; } },
+      { h: 'Result', f: function (i) { return bdg(i.status, tone(i.status)); } },
+      { h: 'Filed on', f: link },
+    ], rows, { ps: 10 }) : emptyBox('No e-mails yet', 'Received e-mails and simulations appear here.');
+    return conn + card('Filing rules', edit ? form : mailKV([['Import', r.on ? 'On' : 'Off'], ['Mailbox', esc(r.mailbox || '—')], ['Unknown sender', esc(r.unknown || 'review')]])) +
+      '<div style="height:14px"></div><div class="grid g2" style="align-items:start">' + card('How e-mails are filed', how) + (edit ? card('Simulate an incoming e-mail', sim) : '') + '</div>' +
+      '<div style="height:14px"></div>' + card('Recent incoming e-mails', inbox, { np: rows.length ? 1 : 0, act: '<button class="btn sm ghost" data-act="mailRefresh">Refresh</button>' });
+  };
+  SUB.cfg_mailIn = function (d, f) {
+    clearErrs(f);
+    if (d.mailbox && !MAIL_RE.test(d.mailbox.trim())) { setErr(f, 'mailbox', 'Enter a valid e-mail address'); return; }
+    if (d.unknown === 'lead') {
+      if (!d.branch) { setErr(f, 'branch', 'Choose a branch'); return; }
+      var b = (S.branches || []).find(function (x) { return x.id === d.branch; });
+      if (!d.prog || !b || (b.programs || []).indexOf(d.prog) < 0) { setErr(f, 'prog', 'Choose a programme offered at this branch'); return; }
+    }
+    var block = String(d.block || '').split(/[\n,;]+/).map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean);
+    var bad = block.find(function (x) { return !MAIL_RE.test(x) && !/^@?[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/.test(x); });
+    if (bad) { setErr(f, 'block', '"' + bad + '" is not an e-mail address or domain'); return; }
+    S.cfg.mailIn = { on: !!d.on, mailbox: (d.mailbox || '').trim().toLowerCase(), unknown: d.unknown || 'review', branch: d.branch || '', prog: d.prog || '', block: block, notify: !!d.notify };
+    cfgSave('Email Incoming', (d.on ? 'Import on' : 'Import off') + ' · unknown senders: ' + S.cfg.mailIn.unknown);
+  };
+  SUB.mailSim = function (d, f) {
+    clearErrs(f);
+    if (!MAIL_RE.test(String(d.from || '').trim())) { setErr(f, 'from', 'Enter the sender’s e-mail address'); return; }
+    flush().then(function () { return req('POST', '/mail/inbound/simulate', { from: d.from.trim(), fromName: d.fromName || '', subject: d.subject || '', text: d.text || '' }); })
+      .then(function (r) {
+        toast('Simulation: ' + r.status + (r.ref ? ' – ' + r.ref : ''), /^Matched|^New lead/.test(r.status) ? 'ok' : 'warn');
+        MAIL.inbox = null; MAIL.status = null; mailLoad(); return reload(false);
+      })
+      .catch(function (e) { toast(e.message, 'err'); });
+  };
+
   // ------------------------------------------------------------------ go
   var _closeModal = window.closeModal;
   window.closeModal = function () { _closeModal(); if (deferredRender) { deferredRender = false; render(); } };

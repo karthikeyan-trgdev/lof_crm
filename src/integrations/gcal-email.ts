@@ -56,9 +56,12 @@ export async function calendarPing(g: SimpleCtx) {
 // ---------------- E-mail (Resend) ----------------
 const esc = (s: string) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
-export async function sendEmail(e: SimpleCtx, m: { to: string; subject: string; text: string; ref?: string }) {
-  const body = {
-    from: e.env.EMAIL_FROM || 'Lab of Future <no-reply@labofuture.example>', to: [m.to], subject: m.subject, text: m.text,
+export async function sendEmail(e: SimpleCtx, m: { to: string; subject: string; text: string; ref?: string; fromName?: string; replyTo?: string; bcc?: string }) {
+  const base = e.env.EMAIL_FROM || 'Lab of Future <no-reply@labofuture.example>';
+  const addr = /<([^>]+)>/.exec(base)?.[1] || base;
+  const body: Record<string, unknown> = {
+    from: m.fromName ? `${m.fromName.replace(/[<>"\r\n]/g, '')} <${addr}>` : base, to: [m.to], subject: m.subject.replace(/[\r\n]+/g, ' '), text: m.text,
+    ...(m.replyTo ? { reply_to: [m.replyTo] } : {}), ...(m.bcc ? { bcc: [m.bcc] } : {}),
     html: `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;color:#1b2633">${esc(m.text).replace(/\n/g, '<br>')}<p style="color:#5d6a7a;font-size:12px;margin-top:24px">Lab of Future</p></div>`,
   };
   if (e.mode === 'mock') {

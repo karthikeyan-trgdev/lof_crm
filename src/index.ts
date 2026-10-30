@@ -8,6 +8,7 @@ import { api } from './routes/api';
 import { webhooks } from './routes/webhooks';
 import { admin } from './routes/admin';
 import { testingRoutes } from './routes/testing';
+import mail from './routes/mail';
 import { cron, queueConsumer } from './jobs';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -45,6 +46,7 @@ app.get('/health', async (c) => {
 app.route('/api/v1/auth', auth);
 app.route('/api/v1/testing', testingRoutes(app));
 app.route('/api/v1/admin', admin);
+app.route('/api/v1/mail', mail);
 app.route('/api/v1', api);
 app.use('/webhooks/*', async (c, next) => {
   c.header('content-security-policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
